@@ -1,31 +1,48 @@
 from manim import *
 
-class ContinuousMotion(Scene):
+class LineIntegral(Scene):
     def construct(self):
-        force_field = lambda pos: (pos[0] ** 2) * RIGHT + (pos[0] * pos[1]) * UP
-        d_force_field = lambda pos: (2 * pos[0]) * RIGHT + (pos[0]) * UP
+        force_field = lambda pos: (pos[0] * pos[0] * RIGHT) - (pos[0] * pos[1] * UP)
         point = Dot()
-        #vf = ArrowVectorField(force_field)
-        #self.add(vf)
+        # vf = ArrowVectorField(force_field)
+        # self.add(vf)
+        circ = Circle(radius=2)
         stream_lines = StreamLines(force_field, stroke_width=2, max_anchors_per_line=90,
                 max_color_scheme_value=np.linalg.norm(force_field([config.frame_width/2,config.frame_height/2])))
         self.add(stream_lines)
         stream_lines.start_animation(warm_up=False, flow_speed=1.5)
-        self.wait(stream_lines.virtual_time / stream_lines.flow_speed)
-        self.vel = np.array([-10.0,0.0,0.0])
-        pm = Dot([2.,2.,0.])
-        pm.add_updater(lambda mob, dt: self.euler(mob, dt, force_field, substeps=1))
+        self.play(Create(circ))
+        self.vel = np.array([0.0, 10.0, 0.0])
+        position = np.array([2.0, 0.0, 0])
+        pm = Dot(position)
+        pm.add_updater(lambda mob, dt: self.euler(mob, dt, force_field, substeps=10))
         self.add(pm)
-        self.wait(5)
+        #self.play(MoveAlongPath(pm, circ), rate_func=lambda x: x/5)
+        self.wait(2)
 
-    def euler(self, mob, dt, force_field, substeps = 1):
-        timestep = dt
-        timestep /= substeps
+    def euler(self, mob, dt, force_field, substeps = 1, radius=2):
+        timestep = dt / substeps
+        dt = 0
         pos = mob.get_center()
         for i in range(substeps):
             dt += timestep
             pos += dt * self.vel
+            # constrain position to the circle
+            pos = radius * pos / np.linalg.norm(pos)
             self.vel += dt * force_field(pos)
+            # constrain velocity to be tangent to the circle
+            tangent = np.array([-1 * pos[1], pos[0], 0.0])
+            tangent /= np.linalg.norm(tangent) #normalized to magnitude 1
+            self.vel = np.dot(self.vel, tangent) * tangent
+            self.vel *= 0.999 # drag
         mob.set_x(pos[0])
         mob.set_y(pos[1])
         return mob
+
+    def riemann(self, curve, steps):
+        pass
+
+    def delta_W(self, init_pos, final_pos, force_field):
+        delta_r = final_pos - init_pos
+        force_vec = force_field(final_pos)
+        return np.dot(delta_r, force_vec)
