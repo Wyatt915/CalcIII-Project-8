@@ -15,17 +15,25 @@ class LineIntegral(Scene):
         self.vel = np.array([0.0, 10.0, 0.0])
         position = np.array([2.0, 0.0, 0])
         pm = Dot(position)
-        pm.add_updater(lambda mob, dt: self.euler(mob, dt, force_field, substeps=10))
+        pm.add_updater(lambda mob, dt: self.verlet(mob, dt, force_field, substeps=10))
         self.add(pm)
         #self.play(MoveAlongPath(pm, circ), rate_func=lambda x: x/5)
-        self.wait(2)
+        self.wait(20)
 
-    def euler(self, mob, dt, force_field, substeps = 1, radius=2):
-        timestep = dt / substeps
-        dt = 0
+    def verlet(self, mob, dt, force_field, substeps = 1, radius=2):
+        """
+        Verlet integrator - Calculate force on the point and update its
+        position and velocity accordingly.
+
+        mob: Mobject - the point moving around the circle
+        dt: Time since this function was last called
+        force_field: Vector force field experienced by the object
+        substeps: Higher value increases the accuracy of the integration
+        radius: Radius of the constraining circle
+        """
+        dt /= substeps
         pos = mob.get_center()
         for i in range(substeps):
-            dt += timestep
             pos += dt * self.vel
             # constrain position to the circle
             pos = radius * pos / np.linalg.norm(pos)
