@@ -5,6 +5,11 @@ FORCE_FIELDS = {
         "textbook": lambda pos: (pos[0] * pos[0] * RIGHT) - (pos[0] * pos[1] * UP)
         }
 
+FIELD_EQNS = {
+        "assigned": r"\mathbf{F}(x,y)=x^2\hat{\imath} + xy\hat{\jmath}",
+        "textbook": r"\mathbf{F}(x,y)=x^2\hat{\imath} - xy\hat{\jmath}"
+        }
+
 class PointMass(Dot):
     def set_vel(self, velocity):
         self.vel = np.array(velocity)
@@ -21,21 +26,27 @@ class LineIntegral(Scene):
     def construct(self):
         point = PointMass()
         force_field = FORCE_FIELDS["textbook"]
-        # vf = ArrowVectorField(force_field)
-        #self.play(Create(vf))
+        field_desc = MathTex(FIELD_EQNS["textbook"])
+        vf = ArrowVectorField(force_field)
+        self.play(Create(vf), Write(field_desc))
+        self.play(field_desc.animate.shift(UP*3.5))
+
+
 
         circ = Circle(radius=2)
-        stream_lines = StreamLines(force_field, stroke_width=2, max_anchors_per_line=90,
+        stream_lines = StreamLines(force_field, stroke_width=2, max_anchors_per_line=10,
                 max_color_scheme_value=np.linalg.norm(force_field([config.frame_width/2,config.frame_height/2])))
+        stream_lines.set_z_index(-1)
         self.add(stream_lines)
         stream_lines.start_animation(warm_up=False, flow_speed=1.5)
+        self.play(Uncreate(vf))
         self.play(Create(circ))
         point.set_vel([0.0, 10.0, 0.0])
         point.set_pos([2.0, 0.0, 0])
         #point.add_updater(lambda mob, dt: self.verlet(mob, dt, force_field, substeps=10))
         self.add(point)
         #self.play(MoveAlongPath(pm, circ), rate_func=lambda x: x/5)
-        steps = 10
+        steps = 3
         time_around_circle = 3 # seconds
         radians = 2 * PI / steps
         for i in range(steps):
