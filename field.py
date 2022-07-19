@@ -6,17 +6,25 @@ FORCE_FIELDS = {
         }
 
 FIELD_EQNS = {
-        "assigned": r"\mathbf{F}(x,y)=x^2\hat{\imath} + xy\hat{\jmath}",
-        "textbook": r"\mathbf{F}(x,y)=x^2\hat{\imath} - xy\hat{\jmath}"
+        "assigned": MathTex(r"\mathbf{F}(x,y)=x^2\hat{\imath} + xy\hat{\jmath}"),
+        "textbook": MathTex(r"\mathbf{F}(x,y)=x^2\hat{\imath} - xy\hat{\jmath}")
         }
+
+CIRCLE_EQNS = {
+        "implicit": MathTex(r"x^2 + y^2 = 2^2"),
+        "parametric": MathTex(r"\mathbf{r}(t) = \langle 2\cos{t}, 2\sin{t} \rangle")
+        }
+
+RADIUS = 2.0
 
 class PointMass(Dot):
     def set_vel(self, velocity):
         self.vel = np.array(velocity)
     def set_pos(self, position):
-        self.pos = np.array(position)
+        self.pos = np.array([position[0], position[1], 0.0])
         self.set_x(position[0])
         self.set_y(position[1])
+        self.set_z(0)
     def get_vel(self):
         return self.vel
     def get_pos(self):
@@ -24,39 +32,59 @@ class PointMass(Dot):
 
 class LineIntegral(Scene):
     def construct(self):
-        point = PointMass()
         force_field = FORCE_FIELDS["textbook"]
-        field_desc = MathTex(FIELD_EQNS["textbook"])
-        vf = ArrowVectorField(force_field)
-        self.play(Create(vf), Write(field_desc))
-        self.play(field_desc.animate.shift(UP*3.5))
+        #field_desc = FIELD_EQNS["textbook"]
+
+        ## create vector field
+        #vf = ArrowVectorField(force_field)
+        #self.play(Create(vf), Write(field_desc))
+        #field_desc.generate_target()
+        #field_desc.target.to_edge(UP)
+        #self.play(MoveToTarget(field_desc))
 
 
+        ## replace vector field with stream lines
+        #stream_lines = StreamLines(force_field, stroke_width=2, max_anchors_per_line=30,
+        #        max_color_scheme_value=np.linalg.norm(force_field([config.frame_width/2,config.frame_height/2])))
+        #stream_lines.set_z_index(-1)
+        #self.add(stream_lines)
+        #stream_lines.start_animation(warm_up=False, flow_speed=1.5)
+        #self.play(Uncreate(vf))
 
-        circ = Circle(radius=2)
-        stream_lines = StreamLines(force_field, stroke_width=2, max_anchors_per_line=10,
-                max_color_scheme_value=np.linalg.norm(force_field([config.frame_width/2,config.frame_height/2])))
-        stream_lines.set_z_index(-1)
-        self.add(stream_lines)
-        stream_lines.start_animation(warm_up=False, flow_speed=1.5)
-        self.play(Uncreate(vf))
-        self.play(Create(circ))
+        # create circle and point
+        circ = Circle(radius=RADIUS)
+        point = PointMass()
+        CIRCLE_EQNS["implicit"].next_to(circ, RIGHT)
+        CIRCLE_EQNS["parametric"].next_to(circ, RIGHT)
+        self.play(Create(circ), Write(CIRCLE_EQNS["implicit"]))
+        self.wait(2)
+        self.play(Transform(CIRCLE_EQNS["implicit"], CIRCLE_EQNS["parametric"]))
+
         point.set_vel([0.0, 10.0, 0.0])
-        point.set_pos([2.0, 0.0, 0])
+        point.set_pos([RADIUS, 0.0, 0])
         #point.add_updater(lambda mob, dt: self.verlet(mob, dt, force_field, substeps=10))
         self.add(point)
-        #self.play(MoveAlongPath(pm, circ), rate_func=lambda x: x/5)
-        steps = 3
+
+        steps = 20
         time_around_circle = 3 # seconds
-        radians = 2 * PI / steps
+        path_length = 2 * PI
+        theta = path_length / steps
+        point.add_updater(lambda x: x.set_pos(x.get_center()))
+        gradient = color_gradient([GREEN, BLUE], steps)
         for i in range(steps):
-            #work, old_pos, new_pos = self.move_around_circle(point, 2, radians, force_field)
-            progress = i/steps
+            progress = i / steps
+            begin = point.get_pos()
             self.play(MoveAlongPath(point, circ),
                     run_time=time_around_circle/steps,
                     rate_func=lambda x:progress + x/steps)
+            work, rect = self.line_integral_partition(
+                    begin, point.get_pos(),
+                    progress * path_length, (progress*path_length) + theta,
+                    gradient[i],
+                    force_field
+            )
             #point.set_pos(new_pos)
-            self.wait(1)
+            self.play(Create(rect))
 
     def verlet(self, mob, dt, force_field, substeps = 1, radius=2):
         """
@@ -87,26 +115,32 @@ class LineIntegral(Scene):
         mob.set_vel(vel)
         return mob
 
-    def move_around_circle(self, mob, radius, radians, force_field):
+    def line_integral_partition(self, begin, end, t_beg, t_end, rect_color, force_field):
         """
-        Move a Mobject around a sector of a circle, and compute the approximate
-        work done on the object by a force field. Does not update the position of the Mobject.
+        Calculate the rectangle of area for the line integral, given some Δr vector.
 
-        mob:     object to move around the circle
-        radius:  radius of the circle
-        radians: distance around the circle to move
-        force_field: field doing work on the object
+        begin (np.array): the initial position on the path
+        end (np.array): the final position on the path
+        force_field: force field doing work on the point
+        t_beg: initial time
+        t_end: final time
+        t_total: total "length" of the path
+        progress: float on range [0,1] representing how far along the path we
+                  are (used to calculate color for the rectangle)
+
+        returns: work done over this interval, rectangle representing area under curve
         """
-        pos = mob.get_pos()
-        theta = np.arccos(pos[0]/radius)
-        if pos[1] < 0:
-            theta += PI
-        theta += radians
-        new_pos = radius * np.array([np.cos(theta), np.sin(theta), 0])
-        delta = new_pos - pos
-        work = np.dot(force_field(new_pos), delta)
-        # mob.set_pos(new_pos)
-        return work, pos, new_pos
+        delta = end - begin
+        work = np.dot(force_field(end), delta)
+        height = work / np.linalg.norm(end - begin)
+        vertex_list = [
+                [t_beg, 0,      0],  # left x-axis
+                [t_end, 0,      0],  # right x-axis
+                [t_end, height, 0],  # right top-axis
+                [t_beg, height, 0]   # left top
+        ]
+        rect = Polygon(*vertex_list).set_fill(rect_color, 0.9).set_stroke(width=0)
+        return work, rect
 
     def full_rotation(self, mob, radius, steps, force_field):
         radians = 2 * PI / steps
