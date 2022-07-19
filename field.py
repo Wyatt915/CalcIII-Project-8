@@ -64,27 +64,56 @@ class LineIntegral(Scene):
         point.set_pos([RADIUS, 0.0, 0])
         #point.add_updater(lambda mob, dt: self.verlet(mob, dt, force_field, substeps=10))
         self.add(point)
+        riemann_group = VGroup()
+        scale_factor = 3/5
+        riemann_axes = Axes(
+                x_range=[0, 2*PI, PI/2], y_range=[-2,2,1],
+                x_axis_config={
+                    "include_ticks": True,
+                    "tick_size": PI/2,
+                    }
+        )
+        #riemann_axes.add_x_labels({
+        #    PI/2:   MathTex(r"\frac{\pi}{2}"),
+        #    PI:     MathTex(r"\pi"),
+        #    3*PI/2: MathTex(r"\frac{3\pi}{2}"),
+        #    PI*2:   MathTex(r"2\pi")
+        #    }
+        #)
+        riemann_axes.scale(scale_factor)
+        riemann_axes.to_corner()
+        self.add(riemann_axes)
+        def run_integral_vis(steps=10):
+            time_around_circle = 3 # seconds
+            path_length = 2 * PI
+            theta = path_length / steps
+            point.add_updater(lambda x: x.set_pos(x.get_center()))
+            gradient = color_gradient([GREEN, BLUE], steps)
+            rectangles = []
+            for i in range(steps):
+                progress = i / steps
+                begin = point.get_pos()
+                self.play(MoveAlongPath(point, circ),
+                        run_time=time_around_circle/steps,
+                        rate_func=lambda x:progress + x/steps)
+                work, rect = self.line_integral_partition(
+                        begin, point.get_pos(),
+                        progress * path_length, (progress*path_length) + theta,
+                        gradient[i],
+                        scale_factor,
+                        force_field
+                )
+                rect.shift(LEFT*6 + DOWN*2)
+                rectangles.append(rect)
+                riemann_axes.add(rect)
+            self.wait(2)
+            riemann_axes.remove(*rectangles)
+            point.clear_updaters()
 
-        steps = 20
-        time_around_circle = 3 # seconds
-        path_length = 2 * PI
-        theta = path_length / steps
-        point.add_updater(lambda x: x.set_pos(x.get_center()))
-        gradient = color_gradient([GREEN, BLUE], steps)
-        for i in range(steps):
-            progress = i / steps
-            begin = point.get_pos()
-            self.play(MoveAlongPath(point, circ),
-                    run_time=time_around_circle/steps,
-                    rate_func=lambda x:progress + x/steps)
-            work, rect = self.line_integral_partition(
-                    begin, point.get_pos(),
-                    progress * path_length, (progress*path_length) + theta,
-                    gradient[i],
-                    force_field
-            )
-            #point.set_pos(new_pos)
-            self.play(Create(rect))
+        run_integral_vis(5)
+        run_integral_vis(50)
+        #run_integral_vis(200)
+
 
     def verlet(self, mob, dt, force_field, substeps = 1, radius=2):
         """
@@ -115,7 +144,7 @@ class LineIntegral(Scene):
         mob.set_vel(vel)
         return mob
 
-    def line_integral_partition(self, begin, end, t_beg, t_end, rect_color, force_field):
+    def line_integral_partition(self, begin, end, t_beg, t_end, rect_color, scale_factor, force_field):
         """
         Calculate the rectangle of area for the line integral, given some Δr vector.
 
@@ -133,12 +162,12 @@ class LineIntegral(Scene):
         delta = end - begin
         work = np.dot(force_field(end), delta)
         height = work / np.linalg.norm(end - begin)
-        vertex_list = [
+        vertex_list = scale_factor * np.array([
                 [t_beg, 0,      0],  # left x-axis
                 [t_end, 0,      0],  # right x-axis
                 [t_end, height, 0],  # right top-axis
                 [t_beg, height, 0]   # left top
-        ]
+        ])
         rect = Polygon(*vertex_list).set_fill(rect_color, 0.9).set_stroke(width=0)
         return work, rect
 
